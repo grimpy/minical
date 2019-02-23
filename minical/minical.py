@@ -7,6 +7,7 @@ import time
 import readchar
 import calendar
 from collections import deque
+from itertools import zip_longest
 from configparser import ConfigParser
 
 ESCAPE = u"\u001b[{}m"
@@ -111,8 +112,13 @@ class Calendar:
         next = self.month.next()
         headers = [prev.header(), self.month.header(), next.header()]
         print(" ".join(headers))
-        for parts in zip(str(prev).splitlines(), str(self.month).splitlines(), str(next).splitlines()):
-            print(" ".join(parts))
+        for parts in zip_longest(str(prev).splitlines(), str(self.month).splitlines(), str(next).splitlines()):
+            for part in parts:
+                if part:
+                    print(part, end=" ")
+                else:
+                    print(" "* 23, end=" ")
+            print("")
         print("")
         for event in self.month.events:
             print(str(event))
