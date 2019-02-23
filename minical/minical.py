@@ -9,19 +9,27 @@ import calendar
 from collections import deque
 from configparser import ConfigParser
 
-
-RED_COLOR = u"\u001b[31m"
-RESET_COLOR = u"\u001b[0m"
-BLUE_COLOR = u"\u001b[34m"
-MAGENTA_COLOR = u"\u001b[35m"
-GREEN_COLOR = u"\u001b[32m"
-BOLD = u"\u001b[1m"
-UNDERLINE = u"\u001b[4m"
+ESCAPE = u"\u001b[{}m"
+COLOR_RESET = ESCAPE.format(0)
+BOLD = ESCAPE.format(1)
+UNDERLINE = ESCAPE.format(4)
+COLOR_BLACK = 30
+COLOR_RED = 31
+COLOR_GREEN = 32
+COLOR_BLUE = 34
+COLOR_MAGENTA = 35
+COLOR_WHITE = 37
 CLEARSCR = u"\u001b[2J"
-COLORS = deque([BLUE_COLOR, GREEN_COLOR, MAGENTA_COLOR, RED_COLOR])
+COLORS = deque([COLOR_BLUE, COLOR_GREEN, COLOR_MAGENTA, COLOR_RED])
 AGENDACOLORS = {}
 
 FROMMILLI = 1000 * 1000
+
+def color_format(text, ansi):
+    if isinstance(ansi, list):
+        ansi = [str(code) for code in ansi]
+        ansi = ";".join(ansi)
+    return "{}{}{}".format(ESCAPE.format(ansi), text, COLOR_RESET)
 
 class Event:
     def __init__(self, calid, title, start, end):
@@ -47,11 +55,11 @@ class Event:
         if self.is_multiday():
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return "{}{}: {} -> {}{}".format(self.color, self.title, start.day, end.day, RESET_COLOR)
+            return color_format("{}: {} -> {}".format(self.title, start.day, end.day), self.color)
         else:
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return "{}{}: {} {}:{:02d} -> {}:{:02d}{}".format(self.color, self.title, start.day, start.hour, start.minute, end.hour, end.minute, RESET_COLOR)
+            return color_format("{}: {} {}:{:02d} -> {}:{:02d}".format(self.title, start.day, start.hour, start.minute, end.hour, end.minute), self.color)
 
 
 def has_event(events, date):
@@ -171,8 +179,7 @@ class Month:
         for week in calendar.monthcalendar(self.first.year, self.first.month):
             days = []
             for day in week:
-                start = ""
-                end = RESET_COLOR
+                color = COLOR_WHITE
                 dayevents = []
                 if day == 0:
                     days.append("  ")
@@ -182,14 +189,14 @@ class Month:
                 if dayevents:
                     for event in dayevents:
                         if not event.is_multiday():
-                            start = event.color
+                            color = event.color
                             break
                     else:
-                        start = self.events[0].color
-                if date == today.month:
-                    start += UNDERLINE
-            
-                days.append("{}{:2}{}".format(start, day, end))
+                        color = self.events[0].color
+                if date.month == today.month and date.day == today.day:
+                    color = [color + 10, COLOR_BLACK]
+
+                days.append(color_format("{:2d}".format(day), color))
             days.append("  ")
             lines.append(" ".join(days))
 
