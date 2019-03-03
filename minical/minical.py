@@ -12,8 +12,9 @@ from configparser import ConfigParser
 
 ESCAPE = u"\u001b[{}m"
 COLOR_RESET = ESCAPE.format(0)
-BOLD = ESCAPE.format(1)
-UNDERLINE = ESCAPE.format(4)
+BOLD = 1
+UNDERLINE = 4
+STRIKETROUH = 9
 COLOR_BLACK = 30
 COLOR_RED = 31
 COLOR_GREEN = 32
@@ -52,15 +53,21 @@ class Event:
     def is_multiday(self):
         return self.end - self.start >= 24 * 3600
 
+    def in_future(self):
+        return time.time() < self.end
+
     def __str__(self):
+        colors = [self.color]
+        if not self.in_future():
+            colors.append(STRIKETROUH)
         if self.is_multiday():
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return color_format("{}: {} -> {}".format(self.title, start.day, end.day), self.color)
+            return color_format("{}: {} -> {}".format(self.title, start.day, end.day), colors)
         else:
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return color_format("{}: {} {}:{:02d} -> {}:{:02d}".format(self.title, start.day, start.hour, start.minute, end.hour, end.minute), self.color)
+            return color_format("{}: {} {}:{:02d} -> {}:{:02d}".format(self.title, start.day, start.hour, start.minute, end.hour, end.minute), colors)
 
 
 def has_event(events, date):
