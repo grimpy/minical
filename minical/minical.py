@@ -2,6 +2,7 @@
 import sys
 import os
 import sqlite3
+import shutil
 import datetime
 import time
 import readchar
@@ -27,11 +28,13 @@ AGENDACOLORS = {}
 
 FROMMILLI = 1000 * 1000
 
+
 def color_format(text, ansi):
     if isinstance(ansi, list):
         ansi = [str(code) for code in ansi]
         ansi = ";".join(ansi)
     return "{}{}{}".format(ESCAPE.format(ansi), text, COLOR_RESET)
+
 
 class Event:
     def __init__(self, calid, title, start, end):
@@ -46,7 +49,11 @@ class Event:
             return True
         daystamp = datetime.datetime.fromtimestamp(timestamp)
         daystart = datetime.datetime.fromtimestamp(self.start)
-        if daystamp.month == daystart.month and daystamp.year == daystart.year and daystamp.day == daystart.day:
+        if (
+            daystamp.month == daystart.month
+            and daystamp.year == daystart.year
+            and daystamp.day == daystart.day
+        ):
             return True
         return False
 
@@ -63,11 +70,23 @@ class Event:
         if self.is_multiday():
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return color_format("{}: {} -> {}".format(self.title, start.day, end.day), colors)
+            return color_format(
+                "{}: {} -> {}".format(self.title, start.day, end.day), colors
+            )
         else:
             start = datetime.datetime.fromtimestamp(self.start)
             end = datetime.datetime.fromtimestamp(self.end)
-            return color_format("{}: {} {}:{:02d} -> {}:{:02d}".format(self.title, start.day, start.hour, start.minute, end.hour, end.minute), colors)
+            return color_format(
+                "{}: {} {}:{:02d} -> {}:{:02d}".format(
+                    self.title,
+                    start.day,
+                    start.hour,
+                    start.minute,
+                    end.hour,
+                    end.minute,
+                ),
+                colors,
+            )
 
 
 def has_event(events, date):
@@ -76,6 +95,7 @@ def has_event(events, date):
         if time.mktime(date.timetuple()) in event:
             dayevents.append(event)
     return dayevents
+
 
 class Calendar:
     def __init__(self, options, **kwargs):
@@ -94,24 +114,28 @@ class Calendar:
             cfg = ConfigParser()
             cfg.read(config)
             for section in cfg.sections():
-                path = cfg.get(section, 'Path', fallback=None)
+                path = cfg.get(section, "Path", fallback=None)
                 if path is None:
                     continue
-                config = os.path.expanduser("~/.thunderbird/{}/calendar-data/cache.sqlite".format(path))
+                config = os.path.expanduser(
+                    "~/.thunderbird/{}/calendar-data/cache.sqlite".format(path)
+                )
                 if os.path.exists(config):
-                    return sqlite3.connect(config)
-
+                    dbpath = shutil.copy(config, config + ".minical")
+                    db = sqlite3.connect(dbpath)
+                    return db
 
     def print_month(self):
         lines = str(self.month).splitlines()
         print(self.month.header())
+        events = self.filter_events(self.month.events)
         for idx, line in enumerate(lines):
             print("{:<23}".format(line), end="")
-            if idx < len(self.month.events):
-                print(self.month.events[idx])
+            if idx < len(events):
+                print(events[idx])
             else:
                 print("")
-        for event in self.month.events[idx:]:
+        for event in events[idx:]:
             print("                       {}".format(str(event)))
 
     def print_three(self):
@@ -119,16 +143,22 @@ class Calendar:
         next = self.month.next()
         headers = [prev.header(), self.month.header(), next.header()]
         print(" ".join(headers))
-        for parts in zip_longest(str(prev).splitlines(), str(self.month).splitlines(), str(next).splitlines()):
+        for parts in zip_longest(
+            str(prev).splitlines(), str(self.month).splitlines(), str(next).splitlines()
+        ):
             for part in parts:
                 if part:
                     print(part, end=" ")
                 else:
-                    print(" "* 23, end=" ")
+                    print(" " * 23, end=" ")
             print("")
         print("")
-        for event in self.month.events:
+        for event in self.filter_events(self.month.events):
             print(str(event))
+
+    def filter_events(self, events):
+        filtered = filter(lambda x: self.options.show_past or x.in_future(), events)
+        return list(filtered)[:self.options.max_events]
 
     def print(self):
         if self.options.three:
@@ -149,22 +179,32 @@ class Calendar:
             print(CLEARSCR)
             self.print()
 
-        
 
 class Month:
     def __init__(self, month, year, db):
         self.db = db
         self.first = datetime.datetime(month=month, year=year, day=1)
-        self.last = (self.first + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(seconds=1)
+        self.last = (self.first + datetime.timedelta(days=32)).replace(
+            day=1
+        ) - datetime.timedelta(seconds=1)
         self.events = []
         if self.db:
-            cursor = self.db.execute("select cal_id, id, title, event_start, event_end from cal_events where event_start > {} and event_start < {} order by event_start".format(self.first.timestamp() * FROMMILLI, self.last.timestamp() * FROMMILLI))
+            cursor = self.db.execute(
+                "select cal_id, id, title, event_start, event_end from cal_events where event_start > {} and event_start < {} order by event_start".format(
+                    self.first.timestamp() * FROMMILLI,
+                    self.last.timestamp() * FROMMILLI,
+                )
+            )
             ids = set()
             for event in cursor.fetchall():
                 if event[1] in ids:
                     continue
                 ids.add(event[1])
-                self.events.append(Event(event[0], event[2], event[3] / FROMMILLI, event[4]/ FROMMILLI))
+                self.events.append(
+                    Event(
+                        event[0], event[2], event[3] / FROMMILLI, event[4] / FROMMILLI
+                    )
+                )
 
     def next(self):
         next = self.last + datetime.timedelta(seconds=1)
@@ -215,4 +255,3 @@ class Month:
 
         lines.append("")
         return "\n".join(lines)
-
